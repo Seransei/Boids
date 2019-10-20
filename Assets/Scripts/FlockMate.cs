@@ -55,17 +55,15 @@ public class FlockMate : MonoBehaviour
         }
         set
         {
-            energy = Mathf.Clamp(energy + value, 0, maxEnergy);
+            energy = Mathf.Clamp(value, 0, maxEnergy);
 
             if (Energy <= 0.4 * maxEnergy && CurrentState != State.S_FLOCKING)
             {
-                Debug.Log("change state to FLOCK");
                 CurrentState = State.S_FLOCKING;
             }
 
             if (Energy >= 0.8 * maxEnergy && CurrentState != State.S_CHASING)
             {
-                Debug.Log("change state to CHASE");
                 CurrentState = State.S_CHASING;
             }
         }
@@ -126,18 +124,15 @@ public class FlockMate : MonoBehaviour
     {
         while (true)
         {
-            Debug.Log(Energy + " " + CurrentState);
             if (CurrentState == State.S_FLOCKING)
             {
                 Energy += 1;
-                Debug.Log("FLOCK");
             }
             else if (CurrentState == State.S_CHASING)
             {
                 Energy -= 1.5f;
-                Debug.Log("CHASE");
             }
-            Debug.Log(Energy + " " + CurrentState);
+
             yield return new WaitForSeconds(1);
         }
     }
