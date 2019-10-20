@@ -20,6 +20,9 @@ public class FlockMate : MonoBehaviour
     [Range(0, 4)]
     public float obstacleAvoidanceRadius = 0.5f;
 
+    WaitForSeconds behaviorRate = new WaitForSeconds(1 / 60);
+    WaitForSeconds energyUpdateRate= new WaitForSeconds(1);
+
     [Header("Coefficient")]
     [Range(0, 3)]
     public float separationAmount = 1f;
@@ -56,21 +59,12 @@ public class FlockMate : MonoBehaviour
         set
         {
             energy = Mathf.Clamp(value, 0, maxEnergy);
-
-            if (Energy <= 0.4 * maxEnergy && CurrentState != State.S_FLOCKING)
-            {
-                CurrentState = State.S_FLOCKING;
-            }
-
-            if (Energy >= 0.8 * maxEnergy && CurrentState != State.S_CHASING)
-            {
-                CurrentState = State.S_CHASING;
-            }
         }
     }
 
     enum State
     {
+        S_IDLE,
         S_FLOCKING,
         S_CHASING
     }
@@ -79,7 +73,7 @@ public class FlockMate : MonoBehaviour
 
     private void Start()
     {
-        CurrentState = State.S_CHASING;
+        CurrentState = State.S_IDLE;
 
         float angle = UnityEngine.Random.Range(0, 2 * Mathf.PI);
         transform.rotation = Quaternion.Euler(new Vector3(0, 0, angle) + baseRotation);
@@ -88,6 +82,7 @@ public class FlockMate : MonoBehaviour
 
         StartCoroutine("Behavior");
         StartCoroutine("UpdateEnergy");
+        StartCoroutine("UpdateState");
     }
 
     private void OnDrawGizmos()
@@ -116,7 +111,28 @@ public class FlockMate : MonoBehaviour
             UpdateVelocity();
             UpdatePosition();
             UpdateRotation();
-            yield return new WaitForSeconds(1 / 60);
+            
+            yield return behaviorRate;
+        }
+    }
+
+    private IEnumerator UpdateState()
+    {
+        while (true)
+        {
+            Debug.Log(CurrentState);
+            if (CurrentState != State.S_CHASING && Energy >= 0.8 * maxEnergy && FindPlayer() != null)
+            {
+                CurrentState = State.S_CHASING;
+                gameObject.GetComponent<SpriteRenderer>().color = Color.black;
+            } 
+            else if (CurrentState != State.S_FLOCKING) {
+                CurrentState = State.S_FLOCKING;
+                gameObject.GetComponent<SpriteRenderer>().color = Color.white;
+            }
+
+
+            yield return behaviorRate;
         }
     }
 
@@ -133,7 +149,7 @@ public class FlockMate : MonoBehaviour
                 Energy -= 1.5f;
             }
 
-            yield return new WaitForSeconds(1);
+            yield return energyUpdateRate;
         }
     }
 
