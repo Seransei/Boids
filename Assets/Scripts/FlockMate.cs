@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
@@ -6,31 +8,36 @@ public class FlockMate : MonoBehaviour
 {
     public Vector3 baseRotation;
 
+    [Header("Parameters")]
     [Range(0, 10)]
     public float maxSpeed = 1f;
-
     [Range(.1f, .5f)]
     public float maxForce = .03f;
-
+    [Range(10, 100)]
+    public float maxEnergy = 10;
     [Range(1, 10)]
     public float neighborhoodRadius = 1f;
+    [Range(0, 4)]
+    public float obstacleAvoidanceRadius = 0.5f;
 
+    [Header("Coefficient")]
     [Range(0, 3)]
     public float separationAmount = 1f;
-
     [Range(0, 3)]
     public float cohesionAmount = 1f;
-
     [Range(0, 3)]
     public float alignmentAmount = 1f;
-
     [Range(0, 10)]
     public float avoidAmount = 1f;
+    [Range(0, 10)]
+    public float chaseAmount = 1f;
 
+    [Header("Attributes")]
     public Vector2 acceleration;
     public Vector2 velocity;
 
-    private Vector2 Position {
+    private Vector2 Position 
+    {
         get {
             return gameObject.transform.position;
         }
@@ -39,36 +46,114 @@ public class FlockMate : MonoBehaviour
         }
     }
 
+    private float energy;
+    public float Energy
+    {
+        get
+        {
+            return energy;
+        }
+        set
+        {
+            energy = Mathf.Clamp(energy + value, 0, maxEnergy);
+
+            if (Energy <= 0.4 * maxEnergy && CurrentState != State.S_FLOCKING)
+            {
+                Debug.Log("change state to FLOCK");
+                CurrentState = State.S_FLOCKING;
+            }
+
+            if (Energy >= 0.8 * maxEnergy && CurrentState != State.S_CHASING)
+            {
+                Debug.Log("change state to CHASE");
+                CurrentState = State.S_CHASING;
+            }
+        }
+    }
+
+    enum State
+    {
+        S_FLOCKING,
+        S_CHASING
+    }
+
+    private State CurrentState { get; set; }
+
     private void Start()
     {
-        float angle = Random.Range(0, 2 * Mathf.PI);
+        CurrentState = State.S_CHASING;
+
+        float angle = UnityEngine.Random.Range(0, 2 * Mathf.PI);
         transform.rotation = Quaternion.Euler(new Vector3(0, 0, angle) + baseRotation);
         velocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+        Energy = maxEnergy + UnityEngine.Random.Range(0, 5);
+
+        StartCoroutine("Behavior");
+        StartCoroutine("UpdateEnergy");
     }
 
     private void OnDrawGizmos()
     {
-        //Gizmos.DrawWireSphere(Position, neighborhoodRadius);
+        Gizmos.DrawWireSphere(Position, obstacleAvoidanceRadius);
         //Gizmos.DrawLine(Position, Position + velocity);
     }
 
     private void Update()
     {
-        Flock(FindFlockMates());
-        UpdateVelocity();
-        UpdatePosition();
-        UpdateRotation();
-
         WrapAround();
+    }
+
+    private IEnumerator Behavior()
+    {
+        while (true)
+        {
+            acceleration = Vector2.zero;
+            acceleration += Avoid(FindObstacles());
+
+            if (CurrentState == State.S_FLOCKING)
+                acceleration += Flock(FindFlockMates());
+            else if (CurrentState == State.S_CHASING)
+                acceleration += Chase(FindPlayer());
+            
+            UpdateVelocity();
+            UpdatePosition();
+            UpdateRotation();
+            yield return new WaitForSeconds(1 / 60);
+        }
+    }
+
+    private IEnumerator UpdateEnergy()
+    {
+        while (true)
+        {
+            Debug.Log(Energy + " " + CurrentState);
+            if (CurrentState == State.S_FLOCKING)
+            {
+                Energy += 1;
+                Debug.Log("FLOCK");
+            }
+            else if (CurrentState == State.S_CHASING)
+            {
+                Energy -= 1.5f;
+                Debug.Log("CHASE");
+            }
+            Debug.Log(Energy + " " + CurrentState);
+            yield return new WaitForSeconds(1);
+        }
+    }
+
+    private List<Collider2D> GetColliders(float radius)
+    {
+        return Physics2D.OverlapCircleAll(Position, radius).ToList();
     }
 
     private List<FlockMate> FindFlockMates()
     {
-        List<Collider2D> boidColliders = Physics2D.OverlapCircleAll(Position, neighborhoodRadius).ToList();
+        List<Collider2D> boidColliders = GetColliders(neighborhoodRadius);
         List<FlockMate> neighbors = new List<FlockMate>();
         foreach(Collider2D col in boidColliders)
         {
-            if (col.gameObject.tag == "Crab")
+            if (col.gameObject.tag == gameObject.tag)
                 neighbors.Add(col.gameObject.GetComponent<FlockMate>());
         }
         neighbors.Remove(this);
@@ -77,7 +162,7 @@ public class FlockMate : MonoBehaviour
     }
     private List<GameObject> FindObstacles()
     {
-        List<Collider2D> boidColliders = Physics2D.OverlapCircleAll(Position, neighborhoodRadius).ToList();
+        List<Collider2D> boidColliders = GetColliders(obstacleAvoidanceRadius);
         List<GameObject> obstacles = new List<GameObject>();
         foreach (Collider2D col in boidColliders)
         {
@@ -87,23 +172,33 @@ public class FlockMate : MonoBehaviour
         return obstacles;
     }
 
-
-    private void Flock(IEnumerable<FlockMate> boids)
+    private PlayerController FindPlayer()
     {
-        var alignment = Alignment(boids);
-        var separation = Separation(boids);
-        var cohesion = Cohesion(boids);
+        List<Collider2D> boidColliders = GetColliders(neighborhoodRadius);
+        foreach (Collider2D col in boidColliders)
+        {
+            if (col.gameObject.tag == "Player")
+                return col.gameObject.GetComponent<PlayerController>();
+        }
+        return null;
+    }
 
-        var obstacles = FindObstacles();
-        var avoid = Vector2.zero;
-        if(obstacles.Count != 0)
-            avoid = AvoidObstacles(obstacles);
+    private Vector2 Flock(List<FlockMate> boids)
+    {
+        var alignment = Vector2.zero;
+        var separation = Vector2.zero; 
+        var cohesion = Vector2.zero;
+        if(boids.Count != 0)
+        {
+            alignment = Alignment(boids);
+            separation = Separation(boids);
+            cohesion = Cohesion(boids);
+        }
 
-        acceleration = 
-            alignmentAmount * alignment + 
-            cohesionAmount * cohesion + 
-            separationAmount * separation + 
-            avoidAmount * avoid;
+        return
+            alignmentAmount * alignment +
+            cohesionAmount * cohesion +
+            separationAmount * separation;
     }
 
     public void UpdateVelocity()
@@ -126,6 +221,7 @@ public class FlockMate : MonoBehaviour
     private Vector2 Alignment(IEnumerable<FlockMate> boids)
     {
         var velocity = Vector2.zero;
+
         if (!boids.Any()) return velocity;
 
         foreach (var boid in boids)
@@ -140,9 +236,10 @@ public class FlockMate : MonoBehaviour
 
     private Vector2 Cohesion(IEnumerable<FlockMate> boids)
     {
-        if (!boids.Any()) return Vector2.zero;
-
         var sumPositions = Vector2.zero;
+
+        if (!boids.Any()) return sumPositions;
+
         foreach (var boid in boids)
         {
             sumPositions += boid.Position;
@@ -158,6 +255,7 @@ public class FlockMate : MonoBehaviour
     {
         var direction = Vector2.zero;
         boids = boids.Where(o => DistanceTo(o) <= neighborhoodRadius / 2);
+
         if (!boids.Any()) return direction;
 
         foreach (var boid in boids)
@@ -171,21 +269,33 @@ public class FlockMate : MonoBehaviour
         return steer;
     }
 
-    private Vector2 AvoidObstacles(List<GameObject> obs)
+    private Vector2 Avoid(List<GameObject> obs)
     {
         var direction = Vector2.zero;
 
+        if (!obs.Any()) return direction;
+
         foreach (GameObject go in obs)
         {
-            var difference = Position - (Vector2)go.transform.position;
+            var objPos = (Vector2)go.transform.position;
+            var difference = Position - objPos;
             direction += difference.normalized / difference.magnitude;
         }
         direction /= obs.Count();
 
-        var steer = Steer(direction.normalized * maxSpeed);
-        return steer;
+        direction = RotateVector2(direction, UnityEngine.Random.Range(-100, 100));
 
-        return direction;
+        var steer = Steer(direction.normalized * maxSpeed);
+        return avoidAmount * steer;
+    }
+
+    private Vector2 Chase(PlayerController player)
+    {
+        if (player == null) return Vector2.zero;
+
+        var direction = player.Position - Position;
+        var steer = Steer(direction.normalized * maxSpeed);
+        return chaseAmount * steer;
     }
 
     private Vector2 Steer(Vector2 desired)

@@ -58,6 +58,7 @@ SpriteRenderer:
   m_ProbeAnchor: {fileID: 0}
   m_LightProbeVolumeOverride: {fileID: 0}
   m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
   m_PreserveUVs: 0
   m_IgnoreNormalsForChartDetection: 0
   m_ImportantGI: 0
@@ -205,10 +206,13 @@ MonoBehaviour:
   baseRotation: {x: 0, y: 0, z: 0}
   maxSpeed: 3.44
   maxForce: 0.03
-  neighborhoodRadius: 1.49
+  maxEnergy: 30
+  neighborhoodRadius: 2.49
+  obstacleAvoidanceRadius: 1.47
   separationAmount: 0.83
   cohesionAmount: 0.79
   alignmentAmount: 1.42
-  avoidAmount: 10
+  avoidAmount: 5.85
+  chaseAmount: 4.85
   acceleration: {x: 0, y: 0}
   velocity: {x: 0, y: 0}
