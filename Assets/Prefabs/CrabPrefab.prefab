@@ -212,7 +212,8 @@ MonoBehaviour:
   separationAmount: 0.83
   cohesionAmount: 0.79
   alignmentAmount: 1.42
-  avoidAmount: 5.85
+  avoidAmount: 4.42
   chaseAmount: 4.85
+  idleAmount: 0.397
   acceleration: {x: 0, y: 0}
   velocity: {x: 0, y: 0}

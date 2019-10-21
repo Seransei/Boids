@@ -20,7 +20,7 @@ public class FlockMate : MonoBehaviour
     [Range(0, 4)]
     public float obstacleAvoidanceRadius = 0.5f;
 
-    WaitForSeconds behaviorRate = new WaitForSeconds(1 / 60);
+    WaitForSeconds updateStateRate = new WaitForSeconds(1 / 2);
     WaitForSeconds energyUpdateRate= new WaitForSeconds(1);
 
     [Header("Coefficient")]
@@ -34,6 +34,8 @@ public class FlockMate : MonoBehaviour
     public float avoidAmount = 1f;
     [Range(0, 10)]
     public float chaseAmount = 1f;
+    [Range(0, 1)]
+    public float idleAmount = 1f;
 
     [Header("Attributes")]
     public Vector2 acceleration;
@@ -80,59 +82,65 @@ public class FlockMate : MonoBehaviour
         velocity = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
         Energy = maxEnergy + UnityEngine.Random.Range(0, 5);
 
-        StartCoroutine("Behavior");
         StartCoroutine("UpdateEnergy");
         StartCoroutine("UpdateState");
     }
 
     private void OnDrawGizmos()
     {
-        Gizmos.DrawWireSphere(Position, obstacleAvoidanceRadius);
+        //Gizmos.DrawWireSphere(Position, obstacleAvoidanceRadius);
         //Gizmos.DrawLine(Position, Position + velocity);
     }
 
     private void Update()
     {
+        acceleration = Vector2.zero;
+        acceleration += Avoid(FindObstacles());
+
+        if (CurrentState == State.S_FLOCKING)
+            acceleration += Flock(FindFlockMates());
+        else if (CurrentState == State.S_CHASING)
+            acceleration += Chase(FindPlayer());
+        else if (CurrentState == State.S_IDLE)
+            acceleration += Idle();
+
+        UpdateVelocity();
+        UpdatePosition();
+        UpdateRotation();
+
         WrapAround();
-    }
-
-    private IEnumerator Behavior()
-    {
-        while (true)
-        {
-            acceleration = Vector2.zero;
-            acceleration += Avoid(FindObstacles());
-
-            if (CurrentState == State.S_FLOCKING)
-                acceleration += Flock(FindFlockMates());
-            else if (CurrentState == State.S_CHASING)
-                acceleration += Chase(FindPlayer());
-            
-            UpdateVelocity();
-            UpdatePosition();
-            UpdateRotation();
-            
-            yield return behaviorRate;
-        }
     }
 
     private IEnumerator UpdateState()
     {
         while (true)
         {
-            Debug.Log(CurrentState);
-            if (CurrentState != State.S_CHASING && Energy >= 0.8 * maxEnergy && FindPlayer() != null)
+            if (Energy >= 0.8 * maxEnergy && FindPlayer() != null)
             {
-                CurrentState = State.S_CHASING;
-                gameObject.GetComponent<SpriteRenderer>().color = Color.black;
-            } 
-            else if (CurrentState != State.S_FLOCKING) {
-                CurrentState = State.S_FLOCKING;
-                gameObject.GetComponent<SpriteRenderer>().color = Color.white;
+                if(CurrentState != State.S_CHASING)
+                {
+                    CurrentState = State.S_CHASING;
+                    gameObject.GetComponent<SpriteRenderer>().color = Color.red;
+                }
+            }
+            else if (Energy <= 0.2 * maxEnergy || FindPlayer() == null)
+            {
+                if (FindFlockMates().Any())
+                {
+                    if (CurrentState != State.S_FLOCKING)
+                    {
+                        CurrentState = State.S_FLOCKING;
+                        gameObject.GetComponent<SpriteRenderer>().color = Color.white;
+                    }
+                }
+                else if (CurrentState != State.S_IDLE)
+                {
+                    CurrentState = State.S_IDLE;
+                    gameObject.GetComponent<SpriteRenderer>().color = Color.black;
+                }
             }
 
-
-            yield return behaviorRate;
+            yield return updateStateRate;
         }
     }
 
@@ -307,6 +315,13 @@ public class FlockMate : MonoBehaviour
         var direction = player.Position - Position;
         var steer = Steer(direction.normalized * maxSpeed);
         return chaseAmount * steer;
+    }
+
+    private Vector2 Idle()
+    {
+        var direction = new Vector2(UnityEngine.Random.Range(-1, 1), UnityEngine.Random.Range(-1, 1));
+        var steer = Steer(direction.normalized * maxSpeed);
+        return idleAmount * steer;
     }
 
     private Vector2 Steer(Vector2 desired)
